@@ -1,3 +1,44 @@
+0.6.6
+-----
+* simpleworkflows.savedata now uses persist flag
+* s3.download maintains directory structure
+
+0.6.5
+-----
+* Can now set impersonation_allowed flag 
+
+0.6.4
+-----
+* Fixed batch workflow bugs
+
+0.6.3
+-----
+* Handle case where output port description is absent
+
+0.6.2
+-----
+* Added support for image location API orders.location()
+
+0.6.1
+-----
+* handle case of spurious keys in s3.download()
+
+0.6.0
+-----
+* add TaskRegistry class to Interface
+
+0.5.5
+-----
+* add format & bands parameters to get_idaho_chip_url() function
+
+0.5.4
+-----
+* add get_idaho_chip_url function
+
+0.5.3
+-----
+* bugfix in idaho.describe_idaho_images function (was showing wrong sensorPlatformName)
+
 0.5.2
 -----
 * Add gbdx.catalog.get() and gbdx.catalog.get_strip_metadata()

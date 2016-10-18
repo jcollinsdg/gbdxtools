@@ -124,10 +124,18 @@ class SimpleWorkflowTests(unittest.TestCase):
         # try several ways to add save tasks:
         workflow.savedata(aoptask.outputs.log)
         workflow.savedata(aoptask.outputs.data, location='myfolder')
-        workflow.savedata(aoptask.outputs.log.value)
-        workflow.savedata(aoptask.outputs.data.value, location='myfolder2')
 
-        assert len(workflow.tasks) == 5
+        assert len(workflow.tasks) == 1
+
+        to_submit = workflow.generate_workflow_description()
+
+        for output in to_submit['tasks'][0]['outputs']:
+            if output['name'] == 'log':
+                assert output.get('persist') is True
+
+            if output['name'] == 'data':
+                assert output.get('persist') is True
+                assert output.get('persistLocation') == 'myfolder'
 
     @vcr.use_cassette('tests/unit/cassettes/test_simpleworkflow_autostage_to_s3.yaml', record_mode='new_episodes',
                       filter_headers=['authorization'])
@@ -139,16 +147,13 @@ class SimpleWorkflowTests(unittest.TestCase):
         # try several ways to add save tasks:
         workflow.savedata(aoptask.outputs.log)
         workflow.savedata(aoptask.outputs.data, location='myfolder')
-        workflow.savedata(aoptask.outputs.log.value)
-        workflow.savedata(aoptask.outputs.data.value, location='myfolder2')
 
         outputs = workflow.list_workflow_outputs()
 
-        assert len(outputs) == 4
-        for output in outputs:
-            assert list(output.keys())[0].startswith('source:')
-            assert list(output.values())[0].startswith('s3://')
+        assert len(outputs) == 2
 
+        assert aoptask.name + ':' + 'log' in outputs
+        assert aoptask.name + ':' + 'data' in outputs
 
     @vcr.use_cassette('tests/unit/cassettes/test_task_name_input.yaml',record_mode='new_episodes',filter_headers=['authorization'])
     def test_task_name_input(self):
@@ -228,7 +233,7 @@ class SimpleWorkflowTests(unittest.TestCase):
 
     @vcr.use_cassette('tests/unit/cassettes/test_task_timeout.yaml',record_mode='new_episodes',filter_headers=['authorization'])
     def test_task_timeout(self):
-        """ 
+        """
         Verify we can set task timeouts, it appears in the json, and launching a workflow works
         """
         aoptask = self.gbdx.Task("AOP_Strip_Processor", data='testing')
@@ -346,3 +351,75 @@ class SimpleWorkflowTests(unittest.TestCase):
                 }
             ]
         }
+
+    @vcr.use_cassette('tests/unit/cassettes/test_batch_workflows_works_with_setters.yaml', record_mode='new_episodes', filter_headers=['authorization'])
+    def test_batch_workflows_works_with_setters(self):
+        """
+        submit using setters with batch inputs
+        :return:
+        """
+        # note there are 2 inputs
+        data = ["s3://receiving-dgcs-tdgplatform-com/054813633050_01_003",
+                "http://test-tdgplatform-com/data/QB02/LV1B/053702625010_01_004/053702625010_01/053702625010_01_P013_MUL"]
+
+        aoptask = self.gbdx.Task("AOP_Strip_Processor")
+        aoptask.inputs.data = data
+        aoptask.inputs.enable_acomp = True
+        aoptask.inputs.enable_pansharpen = True
+
+        workflow = self.gbdx.Workflow([aoptask])
+        workflow.savedata(aoptask.outputs.data, location='some_folder')
+        batch_workflow_id = workflow.execute()
+
+        assert len(batch_workflow_id) > 0
+
+        # will fail if string is not base 10
+        assert type(int(batch_workflow_id)) == int
+
+        # sub workflows should be still running
+        assert workflow.running is True
+
+        # sub workflows should not be completed yet
+        assert workflow.complete is False
+
+    @vcr.use_cassette('tests/unit/cassettes/test_adding_impersonation_allowed.yaml', record_mode='new_episodes', filter_headers=['authorization'])
+    def test_setting_impersonation_allowed_on_task(self):
+        """
+        test adding 'impersonation allowed' on the task object.
+        :return:
+        """
+        data = "s3://receiving-dgcs-tdgplatform-com/054813633050_01_003"
+        aoptask = self.gbdx.Task("AOP_Strip_Processor")
+        # add impersonation allowed
+        aoptask.impersonation_allowed = True
+
+        aoptask.inputs.data = data
+        aoptask.inputs.enable_acomp = True
+        aoptask.inputs.enable_pansharpen = True
+
+        workflow = self.gbdx.Workflow([aoptask])
+        self.assertTrue(workflow.tasks[0].impersonation_allowed)
+
+        wf_def = workflow.generate_workflow_description()
+        # impersonation_allowed should be True
+        self.assertTrue(wf_def.get("tasks")[0].get("impersonation_allowed"))
+
+    @vcr.use_cassette('tests/unit/cassettes/test_NOT_adding_impersonation_allowed.yaml', record_mode='new_episodes', filter_headers=['authorization'])
+    def test_NOT_setting_impersonation_allowed_on_task(self):
+        """
+        test 'impersonation allowed' is not a task attribute unless user sets 'impersonation allowed' to True
+        :return:
+        """
+        data = "s3://receiving-dgcs-tdgplatform-com/054813633050_01_003"
+        aoptask = self.gbdx.Task("AOP_Strip_Processor")
+
+        aoptask.inputs.data = data
+        aoptask.inputs.enable_acomp = True
+        aoptask.inputs.enable_pansharpen = True
+
+        workflow = self.gbdx.Workflow([aoptask])
+        self.assertFalse(workflow.tasks[0].impersonation_allowed)
+
+        wf_def = workflow.generate_workflow_description()
+        # impersonation_allowed should not be in task
+        self.assertFalse(hasattr(wf_def.get("tasks")[0], "impersonation_allowed"))
